@@ -1,0 +1,31 @@
+@startuml
+title Pipeline CI/CD - CommerceHub
+
+skinparam shadowing false
+
+start
+
+:Pull Request;
+:Lint;
+:Tests;
+:Dependency / vulnerability scan;
+:Build;
+
+if (Pipeline OK?) then (si)
+
+  :Merge a main;
+  :Deploy staging;
+  :Smoke tests;
+  :Migraciones compatibles;
+  :Deploy produccion;
+  :Health checks y monitoreo;
+
+else (no)
+
+  :Corregir cambios;
+
+endif
+
+stop
+
+@enduml
