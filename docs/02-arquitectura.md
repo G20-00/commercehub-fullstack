@@ -64,37 +64,31 @@ Si el pago nunca termina, un proceso asincrono puede liberar la reserva
 ## 2.3 Componentes y responsabilidades
 
 API:
-expone endpoints y ejecuta la logica de negocio
-contiene modulos como auth, catalog, inventory, cart, orders, payments, notifications y audit
+endpoints y logica de negocio
 
 PostgreSQL:
-guarda datos transaccionales
-mantiene consistencia para ordenes, inventario, reservas, pagos e idempotencia
+datos transaccionales y consistencia
 
 Redis:
-sirve para cache, rate limiting y datos temporales
-no controla el stock como fuente de verdad
+cache, rate limiting y datos temporales
 
 Queue:
-desacopla procesos asincronos del request principal
-permite reintentos controlados
+desacopla procesamiento asincrono
 
 Workers:
-procesan tareas fuera del flujo principal
-por ejemplo notificaciones, emails y trabajos secundarios
+procesan tareas fuera del request principal
 
 Object Storage:
-guarda imagenes y archivos de productos
+almacenamiento de imagenes
 
 CDN:
-entrega contenido estatico e imagenes cerca del usuario
+distribucion de contenido estatico
 
 Proveedor de pagos:
-procesa el pago fuera del sistema
-envia confirmaciones por webhook
+procesamiento externo y confirmacion por webhook
 
 Observabilidad:
-centraliza logs, metricas, trazas y alertas
+logs, metricas, trazas y alertas
 
 ## 2.4 Consistencia
 
@@ -142,6 +136,9 @@ WHERE sku = $1
 Despues se revisa el numero de filas afectadas
 Si no se actualizo ninguna fila, no habia stock suficiente
 
+La reserva y la creacion de la orden deben ejecutarse dentro de la misma transaccion
+Si cualquier parte falla se hace rollback
+
 Otra opcion es usar SELECT ... FOR UPDATE dependiendo del flujo
 La idea es bloquear o actualizar de forma segura el registro que representa el stock
 
@@ -154,9 +151,9 @@ Si el pago no se completa, una tarea asincrona puede liberar la reserva
 ### Solicitudes duplicadas del cliente
 
 El cliente debe enviar Idempotency-Key al iniciar el pago
-El backend guarda esa clave junto con la orden creada o el resultado
+La clave debe tener una restriccion UNIQUE y quedar asociada a la operacion creada
 
-Si llega la misma solicitud otra vez, se devuelve el mismo resultado
+Si la misma clave llega otra vez se devuelve el resultado de la operacion existente
 No se crea otra orden
 
 ### Cobros duplicados
@@ -189,6 +186,7 @@ PostgreSQL deberia ser administrado o tener una estrategia equivalente de alta d
 
 Los backups son necesarios, pero no suficientes para 99.9%
 Tambien hay que probar periodicamente que se pueden restaurar
+Tambien definiria objetivos de recuperacion como RPO y RTO y los validaria mediante pruebas de restauracion
 
 Las replicas de lectura pueden agregarse si el patron real de lectura lo justifica
 No las pondria como requisito desde el inicio
@@ -248,7 +246,7 @@ Se pueden usar servicios administrados equivalentes en AWS, Azure o GCP
 
 ## 2.10 Seguridad
 
-La seguridad debe cubrir lo basico sin complicar de mas esta arquitectura
+La arquitectura debe cubrir al menos los siguientes controles
 
 - autenticacion
 - autorizacion por roles
