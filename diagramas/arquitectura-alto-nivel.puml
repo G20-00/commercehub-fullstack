@@ -1,0 +1,95 @@
+@startuml
+title Arquitectura de alto nivel - CommerceHub
+
+left to right direction
+
+skinparam shadowing false
+skinparam componentStyle rectangle
+skinparam packageStyle rectangle
+skinparam linetype ortho
+skinparam nodesep 40
+skinparam ranksep 50
+
+package "Clientes" {
+    actor "Usuario Web" as WebUser
+    actor "Usuario Movil" as MobileUser
+}
+
+package "Entrada" {
+    cloud "CDN" as CDN
+    node "Load Balancer" as LB
+}
+
+package "Backend" {
+    component "CommerceHub API\nMonolito modular" as API
+
+    note bottom of API
+      Modulos
+      auth
+      catalog
+      inventory
+      cart
+      orders
+      payments
+      notifications
+      audit
+    end note
+}
+
+package "Datos e infraestructura" {
+    database "PostgreSQL" as DB
+    database "Redis" as Redis
+    queue "Cola de mensajes" as Queue
+    cloud "Object Storage\nImagenes" as Storage
+}
+
+package "Servicios externos" {
+    cloud "Proveedor de pagos" as PaymentProvider
+}
+
+package "Procesamiento asincrono" {
+    component "Workers" as Workers
+}
+
+package "Observabilidad" {
+    component "Logs" as Logs
+    component "Metricas" as Metrics
+    component "Trazas" as Traces
+    component "Alertas" as Alerts
+
+    Metrics --> Alerts
+}
+
+WebUser --> CDN : HTTPS
+CDN --> LB
+
+MobileUser --> LB : HTTPS
+
+LB --> API : HTTP / HTTPS
+
+API --> DB : SQL
+API --> Redis : Cache
+API --> Queue : Eventos
+API --> Storage : Imagenes
+
+API --> PaymentProvider : API pagos
+PaymentProvider --> API : Webhook
+
+Queue --> Workers
+
+API ..> Logs
+API ..> Metrics
+API ..> Traces
+
+Workers ..> Logs
+Workers ..> Metrics
+
+' Layout helpers
+DB -[hidden]-> Redis
+Redis -[hidden]-> Queue
+Queue -[hidden]-> Storage
+
+API -[hidden]-> PaymentProvider
+PaymentProvider -[hidden]-> Workers
+
+@enduml
