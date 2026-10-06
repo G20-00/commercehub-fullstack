@@ -1,0 +1,117 @@
+@startuml
+title Flujo de pago - CommerceHub
+
+skinparam shadowing false
+skinparam responseMessageBelowArrow true
+
+actor Usuario
+
+participant "Frontend" as Frontend
+participant "Backend API" as API
+database "PostgreSQL" as DB
+participant "Proveedor de pagos" as Payment
+queue "Cola de mensajes" as Queue
+participant "Worker" as Worker
+
+Usuario -> Frontend : Presiona Pagar
+
+Frontend -> API : POST /orders\nIdempotency-Key
+
+activate API
+
+API -> API : Validar request
+API -> API : Validar carrito y precios
+
+API -> DB : BEGIN
+
+API -> DB : Verificar Idempotency-Key
+
+alt Peticion ya procesada
+    DB --> API : Resultado existente
+    API -> DB : ROLLBACK
+    API --> Frontend : Resultado anterior
+
+else Nueva peticion
+
+    API -> DB : Reservar inventario
+
+    alt Sin stock
+        DB --> API : Stock insuficiente
+        API -> DB : ROLLBACK
+        API --> Frontend : Error de stock
+
+    else Stock disponible
+
+        API -> DB : Crear orden PENDING
+        API -> DB : Crear order_items
+        API -> DB : Guardar Idempotency-Key
+        API -> DB : COMMIT
+
+        note right of API
+            La transaccion termina aqui
+            antes de llamar al proveedor
+        end note
+
+        API -> Payment : Crear pago
+
+        Payment --> API : Pago iniciado
+
+        API --> Frontend : Orden PENDING
+    end
+end
+
+deactivate API
+
+Payment -> API : Webhook de pago
+
+activate API
+
+API -> DB : Verificar event_id
+
+alt Webhook ya procesado
+
+    DB --> API : Evento existente
+    API --> Payment : 200 OK
+
+else Nuevo webhook
+
+    API -> DB : BEGIN
+    API -> DB : Registrar event_id
+
+    alt Pago aprobado
+        API -> DB : Pago = PAID
+        API -> DB : Orden = CONFIRMED
+        API -> DB : Confirmar reserva
+
+    else Pago rechazado
+        API -> DB : Pago = FAILED
+        API -> DB : Orden = PAYMENT_FAILED
+        API -> DB : Liberar reserva
+    end
+
+    API -> DB : COMMIT
+
+    API -> Queue : Publicar evento de orden
+
+    API --> Payment : 200 OK
+end
+
+deactivate API
+
+Queue -> Worker : Procesar evento
+
+activate Worker
+
+Worker -> Worker : Enviar notificacion
+Worker -> Worker : Procesar tareas secundarias
+
+deactivate Worker
+
+note over API,DB
+    La reserva tiene expiracion
+
+    Si el pago no termina a tiempo,
+    un proceso asincrono libera el inventario
+end note
+
+@enduml
